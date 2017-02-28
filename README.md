@@ -141,19 +141,130 @@ f.close()
 The directory name is **scenenetplayground** which contains the main file named **main_check_room_camera_intersection.cpp**. What does it need? 
 
 - it has **std::string layout_fileName = std::string(argv[1]);**  where argv[1] is the txt output from the physics engine.
-- There is the .sh file **make_trajectory0.sh** in the build of scenenetplayground which allows us to generate multiple trajectories for the same scene (with fixed layout and fixed configuration of objects)
+- There is the .sh file **run_many.py** in the build of scenenetplayground. It reads the files from train_physics_layouts directory and then runs the ./room_camera_intersection and once it has done processing this file, it writes the file into processed directory and at the same time it writes the corresponding layout-object-trajectory file in **/mnt/disk/scenenet/ScenenetLayouts/train_text_layouts/**. When doing batch rendering, the OptiX code reads the files from this directory and once it has done rendering, the python script moves the file into the _processed version. 
 
 ```
-j=0
-cd /home/bjm113/ScenenetLayouts/physics
-ls *.txt | sort -R | while read i;
-do
-    echo $i
-    until /home/bjm113/scenenetplayground/build/room_camera_intersection $i $j;
-    do
-        sleep 0.1
-    done
-done
-cd -
-```
+from functools import partial
+from multiprocessing.dummy import Pool
+from subprocess import call
+import os
+import time
+import shutil
 
+def main():
+
+    def get_command(file):
+        filename = os.path.split(file)[1].split('.')[0]
+        return './room_camera_intersection {0} {1} > /dev/null 2>&1'.format(file,filename)
+
+    input_dir = '/mnt/disk/scenenet/chrono/train_physics_layouts/'
+    output_dir = '/mnt/disk/scenenet/chrono/train_physics_layouts_processed/'
+
+    pool = Pool(10)
+    while True:
+        all_files = []
+        for root, dirs, files in os.walk(input_dir):
+            for file in files:
+                abs_path = os.path.join(root,file)
+                all_files.append(abs_path)
+        # This slight gap ensures that if a file was just being written to, it
+        # will have completed by the time we process it.  Writing the file takes
+        # less than 10ms normally.
+        time.sleep(5)
+        commands = [get_command(x) for x in all_files]
+        try:
+            for i, returncode in enumerate(pool.imap(partial(call, shell=True), commands)):
+                if returncode == 0:
+                    print('Completed {0}'.format(all_files[i]))
+                    try:
+                        shutil.move(all_files[i],output_dir)
+                    except:
+                        pass
+        except:
+            pass
+
+if __name__ == '__main__':
+    main()
+
+```
+There is a corresponding **run_make.py** in the directory **/mnt/disk/scenenet/bin2/build** that renders scene and puts the processed files in the **/mnt/disk/scenenet/ScenenetLayouts/train_text_layouts_processed/** directory.
+```
+import logging
+import multiprocessing
+import os
+import shutil
+import subprocess
+import threading
+import time
+
+class ThreadWorker(threading.Thread):
+    def __init__(self, in_queue, queue_func, **kwargs):
+        threading.Thread.__init__(self)
+        self.in_queue = in_queue
+        self.queue_func = queue_func
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+
+    def run(self):
+        while True:
+            try:
+                item = self.in_queue.get()
+            except OSError as e:
+                logging.info('Queue closed')
+                break
+            logging.info('Queue size:{0}'.format(self.in_queue.qsize()))
+            self.queue_func(self,item)
+            self.in_queue.task_done()
+
+
+def main():
+    # Logging is thread safe
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s (%(threadName)-2s) %(message)s',)
+
+    gpu_list = [0,2,3]
+    input_dir = '/mnt/disk/scenenet/ScenenetLayouts/train_text_layouts/'
+    processed_dir = '/mnt/disk/scenenet/ScenenetLayouts/train_text_layouts_processed/'
+    output_dir = '/mnt/disk/scenenet/newdataset/'
+    time_limit = 3 * 60 * 60
+
+    # The main worker function
+    def my_queue_func(worker,abs_path):
+        gpu_id = worker.gpu_id
+        filename_without_suffix = os.path.split(abs_path)[1].split('.')[0]
+        this_run_base_dir = os.path.join(output_dir,filename_without_suffix)
+        logging.info('About to process:{0} on gpu:{1}'.format(abs_path,gpu_id))
+        if not os.path.exists(this_run_base_dir):
+            os.mkdir(this_run_base_dir)
+            os.mkdir(os.path.join(this_run_base_dir,'instance'))
+            os.mkdir(os.path.join(this_run_base_dir,'photo'))
+            os.mkdir(os.path.join(this_run_base_dir,'depth'))
+        command = 'export CUDA_VISIBLE_DEVICES={0} && ./Headless_SceneNet {1} {2} > {1}/output.log 2>&1'.format(gpu_id,this_run_base_dir,abs_path)
+        try:
+            result = subprocess.call(command,shell=True,timeout=time_limit)
+            if result == 0:
+                logging.info('Success: finished processing:{0} return code:{1}'.format(abs_path,result))
+                shutil.move(abs_path,processed_dir)
+            else:
+                logging.info('Failure: finished processing:{0} return code:{1}'.format(abs_path,result))
+        except subprocess.TimeoutExpired as e:
+            logging.info('Timeout on processing:{0}'.format(abs_path))
+
+    while True:
+        in_queue = multiprocessing.JoinableQueue()
+        # Get the list of files
+        for root, dirs, files in os.walk(input_dir):
+            for file in files:
+                abs_path = os.path.join(root,file)
+                in_queue.put(abs_path)
+        time.sleep(5)
+        # Spawn a pool of threads, and pass them the queue instance 
+        for gpu in gpu_list:
+            worker = ThreadWorker(in_queue,my_queue_func,gpu_id=gpu)
+            worker.setDaemon(True)
+            worker.start()
+        in_queue.join()
+
+if __name__ == '__main__':
+    main()
+    
+```
