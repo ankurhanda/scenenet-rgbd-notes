@@ -268,3 +268,7 @@ if __name__ == '__main__':
     main()
     
 ```
+
+##OptiX rendering
+
+## How to get the word-net ids. We created a file with 155 objects and their definitions.
