@@ -138,4 +138,22 @@ f.close()
  
 ## Trajectory Generation code
 
-The directory name is scenenetplayground which contains the main file named **main_check_room_camera_intersection.cpp** 
+The directory name is **scenenetplayground** which contains the main file named **main_check_room_camera_intersection.cpp**. What does it need? 
+
+- it has **std::string layout_fileName = std::string(argv[1]);**  where argv[1] is the txt output from the physics engine.
+- There is the .sh file **make_trajectory0.sh** in the build of scenenetplayground which allows us to generate multiple trajectories for the same scene (with fixed layout and fixed configuration of objects)
+
+```
+j=0
+cd /home/bjm113/ScenenetLayouts/physics
+ls *.txt | sort -R | while read i;
+do
+    echo $i
+    until /home/bjm113/scenenetplayground/build/room_camera_intersection $i $j;
+    do
+        sleep 0.1
+    done
+done
+cd -
+```
+
