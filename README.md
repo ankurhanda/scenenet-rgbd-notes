@@ -305,5 +305,23 @@ int main(int argc, char* argv[])
 - /mnt/disk/scenenet/bin2/src/Geometry/TriangleMesh.cu - this is just ensure that duplicate faces are rendered properly. 
 	- Gets the normal that is pointing towards the ray i.e. opposite to ray direction. If it is not then flip it such that it is always pointing opposite to the ray direction. More importantly, we ignore the normals given by the .obj and use geometric normals instead. Why did we do that? Normals given by obj were not necessarily credible mostly because the models had bad normal meta data. 
 	- Calling rtPotentialIntersection returns true if the t value given could potentially be an intersection point.  If there is no texture we increase the t value by 0.001, this is designed to give priority to faces that have texture.  Because they will have a smaller t value meaning they intersected first and so will be the ones returned.
+- We can change the settings for rendering in the OptixRenderer.cpp file in the /mnt/disk/scenenet/bin2/src/Renderer
+
+```
+const unsigned int OptixRenderer::PHOTON_GRID_MAX_SIZE = 0;
+const unsigned int OptixRenderer::MAX_PHOTON_COUNT = MAX_PHOTONS_DEPOSITS_PER_EMITTED;
+const unsigned int OptixRenderer::PHOTON_LAUNCH_WIDTH = 512;
+const unsigned int OptixRenderer::PHOTON_LAUNCH_HEIGHT = 1024;
+// Ensure that NUM PHOTONS are a power of 2 for stochastic hash
+const unsigned int OptixRenderer::EMITTED_PHOTONS_PER_ITERATION = OptixRenderer::PHOTON_LAUNCH_WIDTH*OptixRenderer::PHOTON_LAUNCH_HEIGHT;
+
+const unsigned int OptixRenderer::NUM_PHOTON_ITERATIONS = 32;
+const unsigned int OptixRenderer::NUM_PHOTONS = OptixRenderer::EMITTED_PHOTONS_PER_ITERATION*OptixRenderer::NUM_PHOTON_ITERATIONS*OptixRenderer::MAX_PHOTON_COUNT;
+
+const unsigned int OptixRenderer::NUM_PHOTON_MAPS = 4;
+const unsigned int OptixRenderer::RES_DOWNSAMPLE = 1;
+const unsigned int OptixRenderer::NUM_ITERATIONS = 6;
+```
+- If there is some runtime error to do with optix rendering (or memory issues), remember to fix it by changing GPU settings in CMakeLists.txt file.
 	
 ## How to get the word-net ids. We created a file with 155 objects and their definitions.
