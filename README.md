@@ -270,5 +270,40 @@ if __name__ == '__main__':
 ```
 
 ##OptiX rendering
+- /mnt/disk/scenenet/bin2/src/headless_SceneNet.cpp is the main file we used to render the scenes.
+- run_main.py is the file we use to invoke the rendering with the OptiX render.
+- This is the main function in the headless_SceneNet.cpp 
+```
+int main(int argc, char* argv[])
+{
+    std::string base_obj_folder = "/mnt/disk/scenenet/ShapeNetObj3/";
+    std::string base_layout_folder = "/mnt/disk/scenenet/ScenenetLayouts/";
 
+    //Set save base location
+    std::string save_base = std::string(argv[1]);
+    std::string layout_file = std::string(argv[2]);
+    std::cout<<"Layout text:"<<layout_file<<std::endl;
+
+    BaseScene scene;
+
+    scene.initScene(save_base,layout_file,base_obj_folder,base_layout_folder,0);
+
+    const int number_trajectory_steps = 100000;
+
+    for (int i = 0; i < number_trajectory_steps; ++i)
+    {
+        if (!scene.trace(save_base+"/",i))
+        {
+          std::cout<<"Breaking"<<std::endl;
+          break;
+        }
+    }
+    return 0;
+}
+```
+- /mnt/disk/scenenet/bin2/src/Scene.h and /mnt/disk/scenenet/bin2/src/Scene.cpp are where the scene is defined. 
+- /mnt/disk/scenenet/bin2/src/Geometry/TriangleMesh.cu - this is just ensure that duplicate faces are rendered properly. 
+	- Gets the normal that is pointing towards the ray i.e. opposite to ray direction. If it is not then flip it such that it is always pointing opposite to the ray direction. More importantly, we ignore the normals given by the .obj and use geometric normals instead. Why did we do that? Normals given by obj were not necessarily credible mostly because the models had bad normal meta data. 
+	- Calling rtPotentialIntersection returns true if the t value given could potentially be an intersection point.  If there is no texture we increase the t value by 0.001, this is designed to give priority to faces that have texture.  Because they will have a smaller t value meaning they intersected first and so will be the ones returned.
+	
 ## How to get the word-net ids. We created a file with 155 objects and their definitions.
